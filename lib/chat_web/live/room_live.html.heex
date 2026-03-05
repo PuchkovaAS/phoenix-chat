@@ -1,0 +1,71 @@
+<span class="text-sm text-gray-300 bg-gray-700/50 px-3 py-1 border border-gray-600">
+  Room: <strong>{@room_id}</strong>
+  <br /> User name: <strong>{@username}</strong>
+</span>
+
+<main class="flex-1 flex flex-col max-w-4xl mx-auto w-full">
+  
+<!-- Messages Container -->
+  <div id="messages-container" class="flex-1 overflow-y-auto p-4 space-y-4" phx-update="stream">
+    <div :for={{dom_id, msg} <- @streams.messages} id={dom_id}>
+      <!-- 
+        ✅ Условное выравнивание:
+        - Если сообщение моё: flex-row-reverse (справа)
+        - Если чужое: обычное выравнивание (слева)
+      -->
+      <div class={["flex items-end gap-3", if(msg.username == @username, do: "flex-row-reverse")]}>
+        
+<!-- 
+          ✅ Условные стили пузыря сообщения:
+          - Моё: зелёный градиент, скругление справа
+          - Чужое: серый фон, скругление слева
+        -->
+        <div class={[
+          "rounded-2xl px-4 py-3 shadow-md max-w-[75%] border",
+          if(msg.username == @username,
+            do: "bg-emerald-600 border border-emerald-500 text-white rounded-br-none",
+            else: "bg-gray-700 border-gray-600 rounded-bl-none"
+          )
+        ]}>
+          <!-- Текст сообщения: белый для контраста -->
+          <p class={[
+            "leading-relaxed",
+            if(msg.username == @username, do: "text-white", else: "text-gray-100")
+          ]}>
+            {msg.message}
+          </p>
+          
+<!-- ✅ Имя пользователя внизу сообщения -->
+          <span class={[
+            "text-xs mt-1 block",
+            if(msg.username == @username,
+              do: "text-green-100/80",
+              else: "text-gray-400"
+            )
+          ]}>
+            {msg.username}
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+<!-- Input Area -->
+  <div class="border-t border-gray-700 bg-gray-800 p-4 shadow-lg">
+    <.form
+      :let={f}
+      for={%{}}
+      id="chat-form"
+      phx-submit="submit_message"
+      phx-hook="ClearForm"
+      class="max-w-3xl mx-auto"
+    >
+      <.input
+        field={f[:message]}
+        type="text"
+        placeholder="Type your message..."
+        class="w-full border-2 border-gray-600 bg-gray-700 text-gray-100 rounded-full px-5 py-3 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/50 transition placeholder-gray-400"
+      />
+    </.form>
+  </div>
+</main>
