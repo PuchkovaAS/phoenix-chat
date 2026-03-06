@@ -28,6 +28,22 @@ import topbar from '../vendor/topbar';
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute('content');
 
 const myHooks = {
+    // ✅ Хук автоскролла
+    AutoScroll: {
+        mounted() {
+            this.scrollToBottom();
+        },
+        updated() {
+            this.scrollToBottom();
+        },
+        scrollToBottom() {
+            // Небольшая задержка, чтобы контент успел отрендериться
+            setTimeout(() => {
+                this.el.scrollTop = this.el.scrollHeight;
+            }, 50);
+        },
+    },
+
     ClearForm: {
         mounted() {
             this.handleEvent('clear_form', ({ selector }) => {
