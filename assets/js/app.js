@@ -47,8 +47,11 @@ const myHooks = {
     ClearForm: {
         mounted() {
             this.handleEvent('clear_form', ({ selector }) => {
-                const form = document.querySelector(selector);
-                if (form) form.reset();
+                const input = document.querySelector(selector);
+                if (input) {
+                    input.value = '';
+                    input.focus();
+                }
             });
         },
     },

@@ -1,6 +1,7 @@
 defmodule ChatWeb.PageLive do
   use ChatWeb, :live_view
   require Logger
+  on_mount {ChatWeb.UserAuth, :require_authenticated}
 
   @impl true
   def mount(_params, _session, socket) do

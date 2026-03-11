@@ -2,75 +2,85 @@ defmodule ChatWeb.RoomLive do
   use ChatWeb, :live_view
   require Logger
 
+  on_mount {ChatWeb.UserAuth, :require_authenticated}
   alias ChatWeb.Presence
 
   @impl true
   def mount(%{"id" => room_id}, _session, socket) do
     topic = "room:" <> room_id
-    username = MnemonicSlugs.generate_slug(2)
+
+    username =
+      case socket.assigns[:current_scope] do
+        %{user: %{nickname: nickname}} when not is_nil(nickname) and nickname != "" ->
+          Logger.info("Using nickname: #{nickname}")
+          nickname
+
+        %{user: %{email: email}} when not is_nil(email) ->
+          Logger.info("Using email: #{email}")
+          email
+
+        _other ->
+          Logger.warning("Fallback to anonymous")
+          "anonymous"
+      end
 
     if connected?(socket) do
+      # Подписка на тему
       ChatWeb.Endpoint.subscribe(topic)
+      # Track presence с key=username
       Presence.track(self(), topic, username, %{username: username})
     end
 
     user_list = list_users(topic)
-    now = DateTime.utc_now()
 
     socket =
       socket
       |> assign(room_id: room_id, topic: topic, username: username)
       |> assign(:user_list, user_list)
-      |> assign(:typing_users, [])
       |> assign(:last_message_user, nil)
       |> assign(:last_message_time, nil)
-      |> stream(:messages, [
-        %{
-          id: UUID.uuid4(),
-          message: "#{username} joined the chat",
-          username: "system",
-          timestamp: DateTime.to_iso8601(now),
-          show_header: true
-        }
-      ])
+      |> stream(:messages, [], reset: true)
 
     {:ok, socket}
   end
 
+  # ✅ Критично: очистка Presence при уходе из LiveView
   @impl true
-  def handle_event("submit_message", %{"message" => message}, socket) do
-    now = DateTime.utc_now()
-    show_header = should_show_header?(socket, socket.assigns.username, now)
-
-    ChatWeb.Endpoint.broadcast(socket.assigns.topic, "new_message", %{
-      id: UUID.uuid4(),
-      message: message,
-      username: socket.assigns.username,
-      timestamp: DateTime.to_iso8601(now),
-      show_header: show_header
-    })
-
-    ChatWeb.Endpoint.broadcast(socket.assigns.topic, "typing", %{
-      username: socket.assigns.username,
-      is_typing: false
-    })
-
-    {:noreply,
-     socket
-     |> push_event("clear_form", %{selector: "#chat-form"})
-     |> assign(:last_message_user, socket.assigns.username)
-     |> assign(:last_message_time, now)}
-  end
-
-  def handle_event("typing", %{"value" => value}, socket) do
-    if String.trim(value) != "" do
-      ChatWeb.Endpoint.broadcast(socket.assigns.topic, "typing", %{
-        username: socket.assigns.username,
-        is_typing: true
-      })
+  def terminate(_reason, socket) do
+    if connected?(socket) do
+      Presence.untrack(socket.assigns.topic, socket.assigns.username)
     end
 
-    {:noreply, socket}
+    :ok
+  end
+
+  @impl true
+  def handle_event("submit_message", %{"message" => message}, socket) do
+    # Пропускаем пустые сообщения
+    if String.trim(message) == "" do
+      {:noreply, socket}
+    else
+      now = DateTime.utc_now()
+      show_header = should_show_header?(socket, socket.assigns.username, now)
+
+      # ✅ Генерируем ID один раз
+      message_id = UUID.uuid4()
+
+      ChatWeb.Endpoint.broadcast(socket.assigns.topic, "new_message", %{
+        id: message_id,
+        message: message,
+        username: socket.assigns.username,
+        timestamp: DateTime.to_iso8601(now),
+        show_header: show_header
+      })
+
+      {:noreply,
+       socket
+       # ✅ Очищаем форму через JS
+       |> push_event("clear_form", %{selector: "#chat-form input"})
+       |> assign(:last_message_user, socket.assigns.username)
+       |> assign(:last_message_time, now)}
+    end
   end
 
   @impl true
@@ -87,7 +97,6 @@ defmodule ChatWeb.RoomLive do
         },
         socket
       ) do
-    # ✅ Исправлено: используем from_iso8601 с pattern matching
     datetime =
       case DateTime.from_iso8601(timestamp) do
         {:ok, dt, _offset} -> dt
@@ -107,29 +116,9 @@ defmodule ChatWeb.RoomLive do
      |> assign(:last_message_time, datetime)}
   end
 
-  def handle_info(
-        %Phoenix.Socket.Broadcast{
-          event: "typing",
-          payload: %{username: username, is_typing: is_typing}
-        },
-        socket
-      ) do
-    if username != socket.assigns.username do
-      typing_users =
-        if is_typing do
-          Enum.uniq(socket.assigns.typing_users ++ [username])
-        else
-          List.delete(socket.assigns.typing_users, username)
-        end
-
-      {:noreply, assign(socket, :typing_users, typing_users)}
-    else
-      {:noreply, socket}
-    end
-  end
-
   @impl true
   def handle_info(%{event: "presence_diff", payload: payload}, socket) do
+    # ✅ Join: не показываем сообщение для себя
     payload.joins
     |> Map.keys()
     |> Enum.each(fn username ->
@@ -147,6 +136,7 @@ defmodule ChatWeb.RoomLive do
       end
     end)
 
+    # ✅ Leave: показываем для всех
     payload.leaves
     |> Map.keys()
     |> Enum.each(fn username ->
@@ -188,8 +178,7 @@ defmodule ChatWeb.RoomLive do
   defp format_time(timestamp) do
     case DateTime.from_iso8601(timestamp) do
       {:ok, datetime, _offset} ->
-        # Просто возвращаем время в формате ЧЧ:ММ
-        Calendar.strftime(datetime, "%H:%M")
+        Calendar.strftime(datetime, "%H:%M:%S")
 
       {:error, _} ->
         ""

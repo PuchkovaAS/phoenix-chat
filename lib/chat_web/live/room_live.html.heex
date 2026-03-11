@@ -1,6 +1,7 @@
+<!-- Room Info Badge -->
 <span class="text-sm text-gray-300 bg-gray-700/50 px-3 py-1 border border-gray-600">
   Room: <strong>{@room_id}</strong>
-  <br /> User name: <strong>{@username}</strong>
+  <br /> User: <strong>{@username}</strong>
 </span>
 
 <main class="flex-1 flex flex-col max-w-4xl mx-auto w-full">
@@ -12,6 +13,7 @@
     phx-update="stream"
     phx-hook="AutoScroll"
   >
+    <!-- Stream сообщений -->
     <div :for={{dom_id, msg} <- @streams.messages} id={dom_id}>
       
 <!-- Системное сообщение -->
@@ -26,9 +28,7 @@
         :if={msg.username != "system"}
         class={[
           "flex items-end gap-2 mb-4",
-          if(msg.username == @username,
-            do: "flex-row-reverse"
-          )
+          if(msg.username == @username, do: "flex-row-reverse")
         ]}
       >
         <div class={[
@@ -54,26 +54,9 @@
       </div>
     </div>
     
-<!-- Индикатор набора текста -->
-    <div :if={length(@typing_users) > 0} class="flex items-center gap-2 ml-12">
-      <div class="flex space-x-1">
-        <div class="w-2 h-2 bg-gray-500 rounded-full animate-bounce" style="animation-delay: 0ms;">
-        </div>
-        <div
-          class="w-2 h-2 bg-gray-500 rounded-full animate-bounce"
-          style="animation-delay: 150ms;"
-        >
-        </div>
-        <div
-          class="w-2 h-2 bg-gray-500 rounded-full animate-bounce"
-          style="animation-delay: 300ms;"
-        >
-        </div>
-      </div>
-      <span class="text-xs text-gray-500 italic">
-        {Enum.join(@typing_users, ", ")}
-        {if length(@typing_users) == 1, do: "is", else: "are"} typing...
-      </span>
+<!-- Пустое состояние (если сообщений нет) -->
+    <div :if={@streams.messages == []} class="flex justify-center items-center h-32 text-gray-500">
+      <span class="text-sm">No messages yet. Start the conversation! 💬</span>
     </div>
   </div>
   
@@ -90,9 +73,9 @@
       <.input
         field={f[:message]}
         type="text"
+        name="message"
+        id="message-input"
         placeholder="Type your message..."
-        phx-keydown="typing"
-        phx-debounce="500"
         class="w-full border-2 border-gray-600 bg-gray-700 text-gray-100 rounded-full px-5 py-3 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/50 transition placeholder-gray-400"
       />
     </.form>

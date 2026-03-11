@@ -1,7 +1,7 @@
 # ✅ Авторизация
-- [ ] mix phx.gen.auth Accounts User users
-- [ ] Защита маршрутов в router.ex
-- [ ] Redirect на login если не авторизован
+- [x] mix phx.gen.auth Accounts User users
+- [x] Защита маршрутов в router.ex
+- [x] Redirect на login если не авторизован
 
 # ✅ База данных
 - [ ] Миграция для сообщений
