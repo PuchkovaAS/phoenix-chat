@@ -57,8 +57,8 @@ defmodule Chat.Accounts.User do
     changeset
     |> validate_required([:nickname])
     |> validate_length(:nickname, min: 3, max: 50)
-    |> validate_format(:nickname, ~r/^[a-zA-Z0-9_]+$/,
-      message: "can only contain letters, numbers, and underscores"
+    |> validate_format(:nickname, ~r/^[\p{L}\p{N}_\-\s]+$/u,
+      message: "can contain letters (any language), numbers, spaces, underscores, and dashes"
     )
     |> unsafe_validate_unique(:nickname, Chat.Repo)
     |> unique_constraint(:nickname)

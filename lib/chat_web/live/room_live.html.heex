@@ -1,24 +1,29 @@
 <!-- Room Info Badge -->
-<span class="text-sm text-gray-300 bg-gray-700/50 px-3 py-1 border border-gray-600">
-  Room: <strong>{@room_id}</strong>
-  <br /> User: <strong>{@username}</strong>
-</span>
+<div class="flex justify-between items-center mb-4">
+  <span class="text-sm text-gray-300 bg-gray-700/50 px-3 py-1 border border-gray-600 rounded">
+    Room: <strong class="text-blue-400">{@room_id}</strong>
+  </span>
+  <span class="text-sm text-gray-300 bg-gray-700/50 px-3 py-1 border border-gray-600 rounded">
+    User: <strong class="text-emerald-400">{@username}</strong>
+  </span>
+</div>
 
-<main class="flex-1 flex flex-col max-w-4xl mx-auto w-full">
+<!-- Главный контейнер: должна быть высота -->
+<main class="flex-1 flex flex-col max-w-4xl mx-auto w-full h-[calc(100vh-140px)]">
   
-<!-- Messages Container -->
+<!-- Messages Container: overflow и высота -->
   <div
     id="messages-container"
-    class="flex-1 overflow-y-auto p-4 space-y-4"
+    class="flex-1 overflow-y-auto p-4 space-y-2 scroll-smooth"
     phx-update="stream"
     phx-hook="AutoScroll"
   >
     <!-- Stream сообщений -->
-    <div :for={{dom_id, msg} <- @streams.messages} id={dom_id}>
+    <div :for={{dom_id, msg} <- @streams.messages} id={dom_id} class="w-full">
       
 <!-- Системное сообщение -->
-      <div :if={msg.username == "system"} class="flex justify-center my-3">
-        <span class="text-xs text-gray-500 bg-gray-800/30 px-3 py-1 rounded-full">
+      <div :if={msg.username == "system"} class="flex justify-center my-4">
+        <span class="text-xs text-gray-500 bg-gray-800/50 px-3 py-1 rounded-full border border-gray-700">
           {msg.message}
         </span>
       </div>
@@ -27,36 +32,50 @@
       <div
         :if={msg.username != "system"}
         class={[
-          "flex items-end gap-2 mb-4",
-          if(msg.username == @username, do: "flex-row-reverse")
+          "flex items-end gap-2 mb-2",
+          if(msg.username == @username, do: "flex-row-reverse", else: "flex-row")
         ]}
       >
+        <!-- Аватар -->
+        <div
+          :if={msg.show_header}
+          class="flex-shrink-0 w-8 h-8 rounded-full bg-gray-600 flex items-center justify-center text-xs font-bold text-white"
+        >
+          {String.slice(msg.username, 0, 1) |> String.upcase()}
+        </div>
+        <div :if={!msg.show_header} class="w-8"></div>
+
         <div class={[
-          "rounded-lg px-4 py-2 max-w-[75%] shadow-sm",
+          "rounded-lg px-4 py-2 max-w-[75%] shadow-sm relative",
           if(msg.username == @username,
-            do: "bg-emerald-600 text-white border-l-4 border-emerald-400",
-            else: "bg-gray-700 text-gray-100 border-l-4 border-blue-500"
+            do: "bg-emerald-600 text-white rounded-br-none",
+            else: "bg-gray-700 text-gray-100 rounded-bl-none"
           )
         ]}>
-          <!-- Имя пользователя сверху -->
-          <div :if={msg.show_header} class="text-xs font-semibold mb-1 opacity-80">
+          <!-- Имя пользователя -->
+          <div :if={msg.show_header} class="text-xs font-semibold mb-1 opacity-90">
             {msg.username}
           </div>
           
 <!-- Текст сообщения -->
-          <p class="text-sm leading-relaxed">{msg.message}</p>
+          <p class="text-sm leading-relaxed whitespace-pre-wrap">{msg.message}</p>
           
-<!-- Время снизу -->
-          <div :if={msg.show_header} class="text-xs mt-1 opacity-60">
-            {format_time(msg.timestamp)}
+<!-- Время сообщения (исправлено) -->
+          <div class={[
+            "text-xs mt-1 text-right",
+            if(msg.show_header, do: "opacity-70", else: "opacity-40")
+          ]}>
+            <span
+              id={"time-#{dom_id}"}
+              phx-hook="LocalTime"
+              data-utc={msg.timestamp}
+              class="local-time"
+            >
+              {format_time(msg.timestamp)}
+            </span>
           </div>
         </div>
       </div>
-    </div>
-    
-<!-- Пустое состояние (если сообщений нет) -->
-    <div :if={@streams.messages == []} class="flex justify-center items-center h-32 text-gray-500">
-      <span class="text-sm">No messages yet. Start the conversation! 💬</span>
     </div>
   </div>
   
@@ -68,7 +87,7 @@
       id="chat-form"
       phx-submit="submit_message"
       phx-hook="ClearForm"
-      class="max-w-3xl mx-auto"
+      class="w-full"
     >
       <.input
         field={f[:message]}
@@ -76,25 +95,25 @@
         name="message"
         id="message-input"
         placeholder="Type your message..."
-        class="w-full border-2 border-gray-600 bg-gray-700 text-gray-100 rounded-full px-5 py-3 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/50 transition placeholder-gray-400"
+        class="w-full border-2 border-gray-600 bg-gray-700 text-gray-100 rounded-none px-4 py-3 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/50 transition placeholder-gray-400"
       />
     </.form>
   </div>
 </main>
 
 <!-- Список пользователей -->
-<aside class="hidden lg:block fixed right-4 top-20 w-56 bg-gray-800/90 backdrop-blur border border-gray-700 rounded-xl shadow-xl">
+<aside class="hidden lg:block fixed right-4 top-24 w-56 bg-gray-800/90 backdrop-blur border border-gray-700 rounded-xl shadow-xl z-50">
   <div class="p-3 border-b border-gray-700">
     <h3 class="text-sm font-semibold text-gray-100">Online</h3>
     <p class="text-xs text-gray-400">{length(@user_list)} users</p>
   </div>
 
-  <div class="p-2 space-y-1">
+  <div class="p-2 space-y-1 max-h-60 overflow-y-auto">
     <div
       :for={user <- @user_list}
       class="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-gray-700/30 transition"
     >
-      <div class="w-2 h-2 rounded-full bg-green-500"></div>
+      <div class="w-2 h-2 rounded-full bg-green-500 shadow-sm shadow-green-500/50"></div>
       <span class="text-sm text-gray-300 truncate">
         {user.username}
         {if user.username == @username, do: " (you)"}

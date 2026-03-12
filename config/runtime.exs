@@ -67,6 +67,11 @@ if config_env() == :prod do
     ],
     secret_key_base: secret_key_base
 
+  config :chat, Chat.Crypto,
+    encryption_key:
+      System.fetch_env!("CHAT_ENCRYPTION_KEY")
+      |> Base.decode64!()
+
   # ## SSL Support
   #
   # To get SSL working, you will need to add the `https` key
@@ -116,4 +121,9 @@ if config_env() == :prod do
   #     config :swoosh, :api_client, Swoosh.ApiClient.Req
   #
   # See https://hexdocs.pm/swoosh/Swoosh.html#module-installation for details.
+else
+  config :chat, Chat.Crypto,
+    encryption_key:
+      System.get_env("CHAT_ENCRYPTION_KEY", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
+      |> Base.decode64!()
 end

@@ -31,19 +31,56 @@ const myHooks = {
     // ✅ Хук автоскролла
     AutoScroll: {
         mounted() {
+            // Скроллим при первой загрузке
             this.scrollToBottom();
+
+            // Создаём наблюдатель за изменениями в контейнере
+            this.observer = new MutationObserver(() => {
+                // Скроллим только если пользователь внизу (чтобы не мешать чтению)
+                if (this.isAtBottom()) {
+                    this.scrollToBottom();
+                }
+            });
+
+            // Наблюдаем за добавлением/удалением детей
+            this.observer.observe(this.el, {
+                childList: true,
+                subtree: false, // false — быстрее, достаточно для стримов
+            });
         },
+
         updated() {
-            this.scrollToBottom();
+            // Для обычных обновлений (не через stream)
+            if (this.isAtBottom()) {
+                this.scrollToBottom();
+            }
         },
+
+        destroyed() {
+            // Очищаем наблюдатель при удалении хука
+            if (this.observer) {
+                this.observer.disconnect();
+            }
+        },
+
+        // Проверяет, находится ли пользователь в нижней части чата (с запасом 100px)
+        isAtBottom() {
+            const threshold = 100;
+            return this.el.scrollHeight - this.el.scrollTop - this.el.clientHeight < threshold;
+        },
+
         scrollToBottom() {
-            // Небольшая задержка, чтобы контент успел отрендериться
-            setTimeout(() => {
-                this.el.scrollTop = this.el.scrollHeight;
-            }, 50);
+            // Двойной requestAnimationFrame для гарантии, что контент отрендерился
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    this.el.scrollTo({
+                        top: this.el.scrollHeight,
+                        behavior: 'smooth',
+                    });
+                });
+            });
         },
     },
-
     ClearForm: {
         mounted() {
             this.handleEvent('clear_form', ({ selector }) => {
@@ -52,6 +89,29 @@ const myHooks = {
                     input.value = '';
                     input.focus();
                 }
+            });
+        },
+    },
+    LocalTime: {
+        mounted() {
+            this.convert();
+        },
+        updated() {
+            this.convert();
+        },
+        convert() {
+            const utc = this.el.getAttribute('data-utc');
+            if (!utc) return;
+
+            const date = new Date(utc);
+            if (isNaN(date.getTime())) return;
+
+            // Форматируем в локальном времени пользователя
+            this.el.textContent = date.toLocaleTimeString([], {
+                hour: '2-digit',
+                minute: '2-digit',
+                // second: '2-digit',  // раскомментируйте, если нужны секунды
+                hour12: false, // 24-часовой формат
             });
         },
     },
