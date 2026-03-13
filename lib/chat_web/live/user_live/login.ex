@@ -1,8 +1,6 @@
 defmodule ChatWeb.UserLive.Login do
   use ChatWeb, :live_view
 
-  alias Chat.Accounts
-
   @impl true
   def render(assigns) do
     ~H"""

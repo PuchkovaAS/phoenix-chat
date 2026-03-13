@@ -1,48 +1,234 @@
-<div class="min-h-screen bg-gray-900 flex items-center justify-center p-4">
-  <div class="max-w-md w-full space-y-8">
-    
-<!-- Заголовок -->
-    <div class="text-center">
-      <h1 class="text-3xl font-bold text-white flex items-center justify-center gap-2">
-        <span>💬</span> Phoenix Chat
-      </h1>
-      <p class="mt-2 text-gray-400">Enter a room to start chatting</p>
+<!-- lib/chat_web/live/page_live.html.heex -->
+<div class="min-h-screen bg-gray-900 flex">
+  
+<!-- ✅ SIDEBAR: Список комнат (слева, фиксированная ширина, скролл) -->
+  <aside class="w-72 bg-gray-800/50 border-r border-gray-700 flex flex-col">
+    <div class="p-4 border-b border-gray-700">
+      <h2 class="text-lg font-semibold text-white flex items-center gap-2">
+        <span>📋</span> Rooms
+      </h2>
+      <p class="text-xs text-gray-400 mt-1">{length(@rooms)} available</p>
     </div>
     
-<!-- ✅ Форма ввода комнаты -->
-    <.form :let={f} for={%{}} as={:room} phx-submit="join_room" class="space-y-4">
-      <.input
-        field={f[:id]}
-        type="text"
-        name="id"
-        placeholder="Enter room name ..."
-        class="w-full bg-gray-800 border-gray-700 text-white rounded-lg px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-      />
-
+<!-- ✅ Скроллящийся список комнат -->
+    <div class="flex-1 overflow-y-auto p-3 space-y-2">
+      <%= if Enum.empty?(@rooms) do %>
+        <p class="text-gray-500 text-sm text-center py-4">No rooms yet</p>
+      <% else %>
+        <%= for room <- @rooms do %>
+          <div class="group flex items-center justify-between p-3 bg-gray-700/30 rounded-lg hover:bg-gray-700/60 transition">
+            <div class="flex items-center gap-2 flex-1 min-w-0">
+              <!-- Индикатор приватности -->
+              <!-- ✅ ИСПРАВЛЕНО: используем {} вместо {} в атрибутах -->
+              <span
+                class="text-lg flex-shrink-0"
+                title={if room.is_private, do: "Private", else: "Public"}
+              >
+                {if room.is_private, do: "🔒", else: "🌐"}
+              </span>
+              <div class="flex-1 min-w-0">
+                <p class="text-white font-medium text-sm truncate" title={room.name}>
+                  {room.name}
+                </p>
+                <p class="text-xs text-gray-400 truncate">
+                  {if room.creator, do: room.creator.nickname, else: "Anonymous"}
+                </p>
+              </div>
+            </div>
+            
+<!-- ✅ Для публичных комнат: прямой вход -->
+            <!-- ✅ Для приватных: заполняем форму -->
+            <%= if room.is_private do %>
+              <button
+                phx-click="fill-join-form"
+                phx-value-room={room.name}
+                class="px-3 py-1 bg-yellow-600/80 hover:bg-yellow-600 text-white text-xs font-medium rounded transition opacity-0 group-hover:opacity-100"
+                title="Requires password"
+              >
+                Join
+              </button>
+            <% else %>
+              <.link
+                navigate={"/#{room.name}"}
+                class="px-3 py-1 bg-blue-600/80 hover:bg-blue-600 text-white text-xs font-medium rounded transition opacity-0 group-hover:opacity-100"
+              >
+                Join
+              </.link>
+            <% end %>
+          </div>
+        <% end %>
+      <% end %>
+    </div>
+    
+<!-- Кнопка создания случайной комнаты внизу sidebar -->
+    <div class="p-3 border-t border-gray-700">
       <.button
-        type="submit"
-        class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition"
+        phx-click="random-room"
+        class="w-full bg-gray-700 hover:bg-gray-600 text-gray-300 text-sm font-medium py-2 rounded-lg transition border border-gray-600"
       >
-        Join Room
+        🎲 Random Room
       </.button>
-    </.form>
-
-    <div class="relative">
-      <div class="absolute inset-0 flex items-center">
-        <div class="w-full border-t border-gray-700"></div>
-      </div>
-      <div class="relative flex justify-center text-sm">
-        <span class="px-2 bg-gray-900 text-gray-500">or</span>
-      </div>
     </div>
-    
-<!-- Кнопка случайной комнаты -->
-    <.button
-      phx-click="random-room"
-      title="Create a random room"
-      class="w-full bg-gray-800 hover:bg-gray-700 text-gray-300 font-semibold py-3 px-4 rounded-lg transition border border-gray-700"
-    >
-      🎲 Create a random room
-    </.button>
-  </div>
+  </aside>
+  
+<!-- ✅ MAIN CONTENT: Формы входа/создания (справа) -->
+  <main class="flex-1 flex items-center justify-center p-8">
+    <div class="max-w-md w-full space-y-6">
+      
+<!-- Заголовок -->
+      <div class="text-center">
+        <h1 class="text-3xl font-bold text-white flex items-center justify-center gap-2">
+          <span>💬</span> Phoenix Chat
+        </h1>
+        <p class="mt-2 text-gray-400">Enter or create a room to start chatting</p>
+      </div>
+      
+<!-- Переключатель: Вход / Создание -->
+      <div class="flex gap-2">
+        <button
+          phx-click="toggle-create"
+          class={[
+            "flex-1 py-2 rounded-lg font-medium transition",
+            if(@create_mode,
+              do: "bg-gray-700 text-gray-300",
+              else: "bg-blue-600 text-white"
+            )
+          ]}
+        >
+          Join Room
+        </button>
+        <button
+          phx-click="toggle-create"
+          class={[
+            "flex-1 py-2 rounded-lg font-medium transition",
+            if(@create_mode,
+              do: "bg-blue-600 text-white",
+              else: "bg-gray-700 text-gray-300"
+            )
+          ]}
+        >
+          Create Room
+        </button>
+      </div>
+      
+<!-- Глобальное сообщение об ошибке -->
+      <div
+        :if={@flash[:error]}
+        class="p-3 bg-red-900/50 border border-red-700 rounded-lg text-red-200 text-sm animate-pulse"
+      >
+        {@flash[:error]}
+      </div>
+      
+<!-- Форма входа в комнату -->
+      <.form
+        :let={f}
+        :if={!@create_mode}
+        for={@room_changeset}
+        as={:room}
+        phx-submit="join_room"
+        class="space-y-4"
+      >
+        <!-- Скрытое поле для возврата после проверки пароля -->
+        <input type="hidden" name="return_url" value={@return_url} />
+
+        <.input
+          field={f[:name]}
+          type="text"
+          name="id"
+          placeholder="Room name..."
+          class="w-full bg-gray-800 border-gray-700 text-white rounded-lg px-4 py-3 focus:ring-2 focus:ring-blue-500"
+          required
+          readonly={!!@return_url}
+        />
+
+        <div class="space-y-1">
+          <.input
+            field={f[:password]}
+            type="password"
+            name="password"
+            placeholder="Password (if private)..."
+            class={[
+              "w-full bg-gray-800 border-gray-700 text-white rounded-lg px-4 py-3 focus:ring-2",
+              if(f.errors[:password],
+                do: "focus:ring-red-500 border-red-500",
+                else: "focus:ring-blue-500"
+              )
+            ]}
+          />
+          <p :if={f.errors[:password]} class="text-red-400 text-xs mt-1 ml-1">
+            {f.errors[:password] |> Enum.map(fn {msg, _} -> msg end) |> Enum.join(", ")}
+          </p>
+        </div>
+
+        <.button
+          type="submit"
+          class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg transition"
+        >
+          {if @return_url, do: "Unlock Room", else: "Join Room"}
+        </.button>
+      </.form>
+      
+<!-- Форма создания комнаты -->
+      <.form
+        :let={f}
+        :if={@create_mode}
+        for={@room_changeset}
+        as={:room}
+        phx-submit="create_room"
+        class="space-y-4"
+      >
+        <.input
+          field={f[:name]}
+          type="text"
+          name="name"
+          placeholder="Room name..."
+          class="w-full bg-gray-800 border-gray-700 text-white rounded-lg px-4 py-3 focus:ring-2 focus:ring-blue-500"
+          required
+        />
+        <.input
+          field={f[:description]}
+          type="text"
+          name="description"
+          placeholder="Description (optional)..."
+          class="w-full bg-gray-800 border-gray-700 text-white rounded-lg px-4 py-3 focus:ring-2 focus:ring-blue-500"
+        />
+
+        <div class="space-y-1">
+          <.input
+            field={f[:password]}
+            type="password"
+            name="password"
+            placeholder="Password (optional)..."
+            class={[
+              "w-full bg-gray-800 border-gray-700 text-white rounded-lg px-4 py-3 focus:ring-2",
+              if(f.errors[:password],
+                do: "focus:ring-red-500 border-red-500",
+                else: "focus:ring-blue-500"
+              )
+            ]}
+          />
+          <p :if={f.errors[:password]} class="text-red-400 text-xs mt-1 ml-1">
+            {f.errors[:password] |> Enum.map(fn {msg, _} -> msg end) |> Enum.join(", ")}
+          </p>
+        </div>
+
+        <label class="flex items-center gap-2 text-gray-300 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            name="room[is_private]"
+            value="true"
+            class="rounded border-gray-600 text-blue-600 focus:ring-blue-500"
+          />
+          <span>Private room (require password)</span>
+        </label>
+
+        <.button
+          type="submit"
+          class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 rounded-lg transition"
+        >
+          Create Room
+        </.button>
+      </.form>
+    </div>
+  </main>
 </div>

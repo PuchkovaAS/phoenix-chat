@@ -64,7 +64,8 @@ defmodule Chat.Messages do
         where: m.room_id == ^room_id and is_nil(m.deleted_at),
         order_by: [desc: m.inserted_at],
         limit: ^limit,
-        preload: [:user]
+        preload: [:user],
+        preload: [:room]
 
     query =
       if cursor do
@@ -153,7 +154,7 @@ defmodule Chat.Messages do
     |> Enum.reverse()
   end
 
-  defp message_to_map({%Message{} = message, show_header}, read_state \\ nil) do
+  defp message_to_map({%Message{} = message, show_header}, read_state) do
     username = get_username(message)
 
     is_read =

@@ -1,12 +1,21 @@
 <!-- Room Info Badge + Unread Counter -->
 <div class="flex justify-between items-center mb-4">
-  <span class="text-sm text-gray-300 bg-gray-700/50 px-3 py-1 border border-gray-600 rounded">
+  <span class="text-sm text-gray-300">
     Room: <strong class="text-blue-400">{@room_id}</strong>
   </span>
+  <!-- ✅ Кнопка Settings только для создателя -->
+  <%= if @room && @room.creator_id == @current_scope.user.id do %>
+    <.link
+      navigate={"/#{@room_id}/settings"}
+      class="text-sm text-gray-300 hover:text-white bg-gray-700/50 px-3 py-1 border border-gray-600 rounded transition flex items-center gap-1"
+    >
+      ⚙️ Settings
+    </.link>
+  <% end %>
 
   <div class="flex items-center gap-2">
     <span class="text-sm text-gray-300 bg-gray-700/50 px-3 py-1 border border-gray-600 rounded">
-      User: <strong class="text-emerald-400">{@username}</strong>
+      User: <strong class="text-emerald-400">{@username || "anonymous"}</strong>
     </span>
     
 <!-- Бейдж непрочитанных сообщений -->

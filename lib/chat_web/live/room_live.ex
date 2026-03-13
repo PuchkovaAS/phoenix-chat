@@ -10,6 +10,7 @@ defmodule ChatWeb.RoomLive do
 
   alias ChatWeb.Presence
   alias Chat.Messages
+  alias Chat.Rooms
 
   @impl true
   def mount(%{"id" => room_id}, _session, socket) do
@@ -26,6 +27,19 @@ defmodule ChatWeb.RoomLive do
           "anonymous"
       end
 
+    # ✅ Находим комнату
+    room = Rooms.get_room_by_name(room_id) || Rooms.get_room!(room_id)
+    room_uuid = room.id
+
+    # 🔐 ПРОВЕРКА ДОСТУПА ДЛЯ ПРИВАТНЫХ КОМНАТ
+    if room.is_private && room.creator_id != socket.assigns.current_scope.user.id do
+      # ✅ Просто редирект с параметром — без sign_path
+      {:ok,
+       socket
+       |> put_flash(:error, "This room is private. Please enter the password.")
+       |> redirect(to: "/?return_url=/#{room_id}")}
+    end
+
     if connected?(socket) do
       ChatWeb.Endpoint.subscribe(topic)
       Presence.track(self(), topic, username, %{username: username})
@@ -33,29 +47,28 @@ defmodule ChatWeb.RoomLive do
 
     user_list = list_users(topic)
     user_id = socket.assigns.current_scope.user.id
-    read_state = Messages.get_read_state(user_id, room_id)
 
-    messages = Messages.list_room_messages(room_id, 50, nil, user_id)
-    unread_count = Messages.count_unread_messages(user_id, room_id)
+    read_state = Messages.get_read_state(user_id, room_uuid)
+    cursor = if read_state, do: read_state.last_seen_at, else: nil
 
-    # 🔍 Отладка
-    IO.inspect("=== MOUNT DEBUG ===", label: "ROOM")
-    IO.inspect(unread_count, label: "unread_count")
-    IO.inspect(length(messages), label: "messages count")
+    messages = Messages.list_room_messages(room_uuid, 50, cursor, user_id)
+    unread_count = Messages.count_unread_messages(user_id, room_uuid)
 
     socket =
       socket
-      |> assign(room_id: room_id || "")
+      |> assign(room_id: room_id)
+      |> assign(room_uuid: room_uuid)
       |> assign(topic: topic)
-      |> assign(username: username || "anonymous")
-      |> assign(:user_list, user_list || [])
+      |> assign(username: username)
+      |> assign(:user_list, user_list)
       |> assign(user_id: user_id)
       |> assign(read_state: read_state)
-      |> assign(unread_count: unread_count || 0)
+      |> assign(unread_count: unread_count)
       |> assign(:last_message_user, nil)
       |> assign(:last_message_time, nil)
-      |> assign(:messages_count, length(messages) || 0)
-      |> stream(:messages, messages || [], reset: true)
+      |> assign(:messages_count, length(messages))
+      |> assign(:room, room)
+      |> stream(:messages, messages, reset: true)
 
     {:ok, socket}
   end
@@ -71,7 +84,7 @@ defmodule ChatWeb.RoomLive do
 
   @impl true
   def handle_event("submit_message", %{"message" => content}, socket) do
-    if String.trim(content || "") == "" do
+    if String.trim(content) == "" do
       {:noreply, socket}
     else
       now = DateTime.truncate(DateTime.utc_now(), :second)
@@ -79,14 +92,14 @@ defmodule ChatWeb.RoomLive do
       user = socket.assigns.current_scope.user
 
       case Messages.create_message(user, %{
-             room_id: socket.assigns.room_id,
+             room_id: socket.assigns.room_uuid,
              content: content
            }) do
         {:ok, _message} ->
           ChatWeb.Endpoint.broadcast(socket.assigns.topic, "new_message", %{
             id: UUID.uuid4(),
-            message: content || "",
-            username: socket.assigns.username || "anonymous",
+            message: content,
+            username: socket.assigns.username,
             timestamp: DateTime.to_iso8601(now),
             show_header: show_header,
             is_read: true
@@ -114,7 +127,7 @@ defmodule ChatWeb.RoomLive do
     if socket.assigns[:user_id] do
       Task.start(fn ->
         Process.sleep(500)
-        Messages.update_read_state(socket.assigns.user_id, socket.assigns.room_id, message_id)
+        Messages.update_read_state(socket.assigns.user_id, socket.assigns.room_uuid, message_id)
       end)
     end
 
@@ -200,7 +213,7 @@ defmodule ChatWeb.RoomLive do
   end
 
   defp format_time(timestamp) do
-    case DateTime.from_iso8601(timestamp || "") do
+    case DateTime.from_iso8601(timestamp) do
       {:ok, utc_datetime, _offset} ->
         local = DateTime.add(utc_datetime, 3 * 3600, :second)
         Calendar.strftime(local, "%H:%M:%S")

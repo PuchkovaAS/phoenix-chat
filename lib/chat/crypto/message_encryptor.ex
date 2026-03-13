@@ -10,8 +10,6 @@ defmodule Chat.Crypto.MessageEncryptor do
   @aes_key_size 32
   # 96 бит для GCM
   @iv_size 12
-  # 128 бит authentication tag
-  @tag_size 16
 
   @doc """
   Шифрует сообщение.
