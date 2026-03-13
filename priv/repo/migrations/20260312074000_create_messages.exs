@@ -1,20 +1,19 @@
+# priv/repo/migrations/*_create_messages.exs
 defmodule Chat.Repo.Migrations.CreateMessages do
   use Ecto.Migration
 
   def change do
     create table(:messages, primary_key: false) do
-      # ID сообщения может быть UUID
       add :id, :binary_id, primary_key: true
-      add :room_id, :string, null: false
+
+      # ✅ ИСПРАВЛЕНО: room_id ссылается на rooms (uuid) с правильным типом
+      add :room_id, references(:rooms, on_delete: :delete_all, type: :binary_id), null: false
 
       add :user_id, references(:users, on_delete: :delete_all), null: false
 
-      # Зашифрованные данные
       add :content_encrypted, :binary, null: false
       add :iv, :binary, null: false
       add :auth_tag, :binary, null: false
-
-      # Метаданные
       add :metadata, :map, default: %{}
       add :edited_at, :utc_datetime
       add :deleted_at, :utc_datetime

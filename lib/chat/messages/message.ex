@@ -11,18 +11,14 @@ defmodule Chat.Messages.Message do
   @foreign_key_type :id
 
   schema "messages" do
-    field :room_id, :string
-    belongs_to :user, Chat.Accounts.User
+    # ✅ belongs_to автоматически создаёт поле room_id
+    belongs_to :room, Chat.Rooms.Room, type: :binary_id
+    belongs_to :user, Chat.Accounts.User, type: :id
 
-    # Виртуальное поле для открытого текста
     field :content, :string, virtual: true
-
-    # Зашифрованные поля в БД
     field :content_encrypted, :binary
     field :iv, :binary
     field :auth_tag, :binary
-
-    # Метаданные
     field :metadata, :map, default: %{}
     field :edited_at, :utc_datetime
     field :deleted_at, :utc_datetime
@@ -38,6 +34,7 @@ defmodule Chat.Messages.Message do
     |> validate_length(:content, min: 1, max: 10_000)
     |> validate_length(:room_id, min: 1, max: 255)
     |> foreign_key_constraint(:user_id)
+    |> foreign_key_constraint(:room_id)
     |> encrypt_content()
   end
 

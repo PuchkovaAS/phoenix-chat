@@ -1,0 +1,121 @@
+<!-- lib/chat_web/live/room_settings_live.html.heex -->
+<div class="min-h-screen bg-gray-900 text-white p-4">
+  <div class="max-w-2xl mx-auto">
+    
+<!-- Заголовок -->
+    <div class="flex items-center justify-between mb-6">
+      <h1 class="text-2xl font-bold">Room Settings</h1>
+      <.link navigate={"/#{@room_id}"} class="text-gray-400 hover:text-white">
+        ← Back to chat
+      </.link>
+    </div>
+    
+<!-- Карточка информации -->
+    <div class="bg-gray-800 rounded-xl p-4 mb-6 border border-gray-700">
+      <h2 class="text-lg font-semibold mb-2">{@room.name}</h2>
+      <p class="text-gray-400 text-sm">{@room.description || "No description"}</p>
+      <div class="mt-3 flex gap-2 text-xs">
+        <span class={[
+          "px-2 py-1 rounded",
+          if(@room.is_private,
+            do: "bg-red-900/50 text-red-300",
+            else: "bg-green-900/50 text-green-300"
+          )
+        ]}>
+          {if @room.is_private, do: "🔒 Private", else: "🌐 Public"}
+        </span>
+        <span class="px-2 py-1 rounded bg-gray-700 text-gray-300">
+          Created: {Calendar.strftime(@room.inserted_at, "%d.%m.%Y")}
+        </span>
+      </div>
+    </div>
+    
+<!-- Форма основных настроек -->
+    <.form
+      :let={f}
+      for={@changeset}
+      phx-submit="update_room"
+      class="bg-gray-800 rounded-xl p-4 mb-6 border border-gray-700 space-y-4"
+    >
+      <h3 class="font-semibold text-lg">General Settings</h3>
+
+      <.input
+        field={f[:name]}
+        type="text"
+        label="Room name"
+        class="w-full bg-gray-700 border-gray-600 text-white"
+      />
+
+      <.input
+        field={f[:description]}
+        type="text"
+        label="Description"
+        class="w-full bg-gray-700 border-gray-600 text-white"
+      />
+
+      <label class="flex items-center gap-2 text-gray-300">
+        <input
+          type="checkbox"
+          name="room[is_private]"
+          value="true"
+          checked={@room.is_private}
+          class="rounded border-gray-600"
+        />
+        <span>Private room</span>
+      </label>
+
+      <.button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded">
+        Save Changes
+      </.button>
+    </.form>
+    
+<!-- Форма смены пароля -->
+    <.form
+      :let={f}
+      for={%{}}
+      phx-submit="update_password"
+      class="bg-gray-800 rounded-xl p-4 mb-6 border border-gray-700 space-y-4"
+    >
+      <h3 class="font-semibold text-lg">Change Password</h3>
+
+      <.input
+        field={f[:new_password]}
+        type="password"
+        name="new_password"
+        label="New password"
+        placeholder="Min 6 characters"
+        class="w-full bg-gray-700 border-gray-600 text-white"
+      />
+
+      <.input
+        field={f[:confirm_password]}
+        type="password"
+        name="confirm_password"
+        label="Confirm new password"
+        class="w-full bg-gray-700 border-gray-600 text-white"
+      />
+
+      <.button
+        type="submit"
+        class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded"
+      >
+        Update Password
+      </.button>
+    </.form>
+    
+<!-- Опасная зона -->
+    <div class="bg-red-900/20 rounded-xl p-4 border border-red-700/50">
+      <h3 class="font-semibold text-lg text-red-300 mb-2">Danger Zone</h3>
+      <p class="text-sm text-gray-400 mb-4">
+        Deleting the room will remove all messages and settings permanently.
+      </p>
+      <button
+        phx-click="delete_room"
+        phx-confirm="Are you sure? This cannot be undone."
+        class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded font-medium"
+      >
+        Delete Room
+      </button>
+    </div>
+  </div>
+</div>
