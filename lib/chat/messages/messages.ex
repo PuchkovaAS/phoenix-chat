@@ -7,6 +7,7 @@ defmodule Chat.Messages do
   alias Chat.Repo
   alias Chat.Messages.Message
   alias Chat.Accounts.User
+  alias Chat.Accounts.UserRoomReadState
 
   require Logger
 
@@ -15,50 +16,6 @@ defmodule Chat.Messages do
     |> Ecto.build_assoc(:messages)
     |> Message.create_changeset(attrs)
     |> Repo.insert()
-  end
-
-  # ✅ ИСПРАВЛЕНО: Заголовок функции с дефолтными значениями вынесен наверх
-
-  def list_room_messages(room_id, limit \\ 50, before_id \\ nil) do
-    query =
-      from m in Message,
-        where: m.room_id == ^room_id and is_nil(m.deleted_at),
-        order_by: [desc: m.inserted_at],
-        limit: ^limit,
-        preload: [:user]
-
-    query =
-      if before_id do
-        from m in query, where: m.id < ^before_id
-      else
-        query
-      end
-
-    messages =
-      query
-      |> Repo.all()
-      |> Repo.preload(:user)
-      |> Enum.map(&Message.decrypt_content/1)
-      |> Enum.reverse()
-
-    # 🔍 УЛУЧШЕННАЯ ОТЛАДКА
-    Logger.debug("=== MESSAGES DEBUG ===")
-    Logger.debug("Total messages: #{length(messages)}")
-
-    Enum.each(messages, fn msg ->
-      Logger.debug("""
-      --- Message #{msg.id} ---
-      User loaded?: #{if msg.user, do: "YES", else: "NO"}
-      User struct: #{inspect(msg.user, limit: :infinity, structs: false)}
-      Nickname value: #{if msg.user, do: inspect(msg.user.nickname), else: "N/A"}
-      Extracted username: #{get_username(msg)}
-      """)
-    end)
-
-    Logger.debug("=== END DEBUG ===")
-
-    enumerate_with_headers(messages)
-    |> Enum.map(&message_to_map/1)
   end
 
   def get_message!(id) do
@@ -73,7 +30,7 @@ defmodule Chat.Messages do
   end
 
   def edit_message(%Message{} = message, new_content) do
-    %{ciphertext: ct, iv: iv, tag: tag} = MessageEncryptor.encrypt(new_content)
+    %{ciphertext: ct, iv: iv, tag: tag} = Chat.Crypto.MessageEncryptor.encrypt(new_content)
 
     message
     |> Message.update_changeset(%{
@@ -98,7 +55,83 @@ defmodule Chat.Messages do
     from(m in Message,
       where: m.room_id == ^room_id and is_nil(m.deleted_at)
     )
-    |> Repo.aggregate(:count, :id)
+    |> Repo.aggregate(:count, :id) || 0
+  end
+
+  def list_room_messages(room_id, limit \\ 50, cursor \\ nil, user_id \\ nil) do
+    base_query =
+      from m in Message,
+        where: m.room_id == ^room_id and is_nil(m.deleted_at),
+        order_by: [desc: m.inserted_at],
+        limit: ^limit,
+        preload: [:user]
+
+    query =
+      if cursor do
+        from m in base_query, where: m.inserted_at < ^cursor
+      else
+        base_query
+      end
+
+    messages =
+      query
+      |> Repo.all()
+      |> Enum.map(&Message.decrypt_content/1)
+      |> Enum.reverse()
+
+    read_state = if user_id, do: get_read_state(user_id, room_id), else: nil
+
+    messages
+    |> enumerate_with_headers()
+    |> Enum.map(&message_to_map(&1, read_state))
+  end
+
+  def get_read_state(user_id, room_id) do
+    Repo.get_by(UserRoomReadState, user_id: user_id, room_id: room_id)
+  end
+
+  def update_read_state(user_id, room_id, last_message_id) do
+    now = DateTime.truncate(DateTime.utc_now(), :second)
+
+    case Repo.get_by(UserRoomReadState, user_id: user_id, room_id: room_id) do
+      nil ->
+        %UserRoomReadState{
+          user_id: user_id,
+          room_id: room_id,
+          last_read_message_id: last_message_id,
+          unread_count: 0,
+          last_seen_at: now
+        }
+        |> UserRoomReadState.changeset(%{})
+        |> Repo.insert()
+
+      read_state ->
+        read_state
+        |> UserRoomReadState.changeset(%{
+          last_read_message_id: last_message_id,
+          unread_count: 0,
+          last_seen_at: now
+        })
+        |> Repo.update()
+    end
+  end
+
+  def count_unread_messages(user_id, room_id) do
+    read_state = get_read_state(user_id, room_id)
+
+    base_query =
+      from m in Message,
+        where: m.room_id == ^room_id and is_nil(m.deleted_at)
+
+    query =
+      if read_state && read_state.last_seen_at do
+        from m in base_query,
+          where: m.inserted_at > ^read_state.last_seen_at
+      else
+        base_query
+      end
+
+    Repo.aggregate(query, :count, :id) || 0
   end
 
   defp enumerate_with_headers(messages) do
@@ -120,15 +153,37 @@ defmodule Chat.Messages do
     |> Enum.reverse()
   end
 
-  defp message_to_map({%Message{} = message, show_header}) do
+  defp message_to_map({%Message{} = message, show_header}, read_state \\ nil) do
     username = get_username(message)
 
+    is_read =
+      case read_state do
+        nil ->
+          false
+
+        %{} ->
+          !is_nil(read_state.last_seen_at) &&
+            DateTime.compare(message.inserted_at, read_state.last_seen_at) != :gt
+      end
+
+    # 🔍 Отладка
+    IO.inspect(
+      %{
+        id: message.id,
+        inserted_at: message.inserted_at,
+        last_seen_at: read_state && read_state.last_seen_at,
+        is_read: is_read
+      },
+      label: "MESSAGE MAP"
+    )
+
     %{
-      id: to_string(message.id),
-      message: message.content,
-      username: username,
-      timestamp: DateTime.to_iso8601(message.inserted_at),
-      show_header: show_header
+      id: to_string(message.id || ""),
+      message: message.content || "",
+      username: username || "anonymous",
+      timestamp: DateTime.to_iso8601(message.inserted_at || DateTime.utc_now()),
+      show_header: show_header || false,
+      is_read: is_read || false
     }
   end
 
@@ -136,7 +191,7 @@ defmodule Chat.Messages do
 
   defp get_username(%Message{user: user}) do
     cond do
-      user.nickname && user.nickname != "" -> user.nickname
+      user && user.nickname && user.nickname != "" -> user.nickname
       true -> "anonymous"
     end
   end

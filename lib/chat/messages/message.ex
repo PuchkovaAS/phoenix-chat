@@ -1,24 +1,20 @@
 defmodule Chat.Messages.Message do
   @moduledoc """
   Схема сообщения с поддержкой шифрования.
-
-  Сообщения хранятся в зашифрованном виде (AES-256-GCM) в базе данных.
   """
 
   use Ecto.Schema
   import Ecto.Changeset
   alias Chat.Crypto.MessageEncryptor
 
-  # ✅ ID сообщения — UUID
   @primary_key {:id, :binary_id, autogenerate: true}
-  # ✅ Foreign key тип — :id (bigint) для совместимости с таблицей users
   @foreign_key_type :id
 
   schema "messages" do
     field :room_id, :string
     belongs_to :user, Chat.Accounts.User
 
-    # Виртуальное поле для открытого текста (только для записи/чтения)
+    # Виртуальное поле для открытого текста
     field :content, :string, virtual: true
 
     # Зашифрованные поля в БД
@@ -35,14 +31,6 @@ defmodule Chat.Messages.Message do
     timestamps(type: :utc_datetime)
   end
 
-  @doc """
-  Changeset для создания сообщения с шифрованием.
-
-  ## Примеры
-
-      iex> create_changeset(%Message{}, %{room_id: "room1", user_id: 1, content: "Hello"})
-      %Ecto.Changeset{}
-  """
   def create_changeset(message, attrs) do
     message
     |> cast(attrs, [:room_id, :content, :user_id, :metadata, :expires_at])
@@ -53,9 +41,6 @@ defmodule Chat.Messages.Message do
     |> encrypt_content()
   end
 
-  @doc """
-  Changeset для обновления (например, пометка как удалённое или редактирование).
-  """
   def update_changeset(message, attrs) do
     message
     |> cast(attrs, [
@@ -69,14 +54,6 @@ defmodule Chat.Messages.Message do
     ])
   end
 
-  @doc """
-  Расшифровывает сообщение и возвращает структуру с полем :content.
-
-  ## Примеры
-
-      iex> decrypt_content(message)
-      %Message{content: "Расшифрованный текст"}
-  """
   def decrypt_content(%__MODULE__{} = message) do
     case MessageEncryptor.decrypt(%{
            ciphertext: message.content_encrypted,
@@ -88,9 +65,6 @@ defmodule Chat.Messages.Message do
     end
   end
 
-  @doc """
-  Шифрует контент сообщения перед сохранением.
-  """
   defp encrypt_content(%Ecto.Changeset{valid?: true} = changeset) do
     case get_change(changeset, :content) do
       nil ->
@@ -103,7 +77,6 @@ defmodule Chat.Messages.Message do
         |> put_change(:content_encrypted, ct)
         |> put_change(:iv, iv)
         |> put_change(:auth_tag, tag)
-        # Удаляем открытый текст из changeset
         |> delete_change(:content)
     end
   end
