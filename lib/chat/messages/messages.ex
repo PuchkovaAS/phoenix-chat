@@ -6,11 +6,13 @@ defmodule Chat.Messages do
   import Ecto.Query
   alias Chat.Repo
   alias Chat.Messages.Message
+  alias Chat.Accounts.User
 
   require Logger
 
-  def create_message(attrs \\ %{}) do
-    %Message{}
+  def create_message(%User{} = user, attrs) do
+    user
+    |> Ecto.build_assoc(:messages)
     |> Message.create_changeset(attrs)
     |> Repo.insert()
   end

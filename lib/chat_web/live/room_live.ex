@@ -65,11 +65,10 @@ defmodule ChatWeb.RoomLive do
       now = DateTime.utc_now()
       show_header = should_show_header?(socket, socket.assigns.username, now)
 
-      user_id = socket.assigns.current_scope.user.id
+      user = socket.assigns.current_scope.user
 
-      case Messages.create_message(%{
+      case Messages.create_message(user, %{
              room_id: socket.assigns.room_id,
-             user_id: user_id,
              content: content
            }) do
         # ← message не нужен
