@@ -32,18 +32,30 @@ defmodule ChatWeb.RoomLive do
     end
 
     user_list = list_users(topic)
-    messages = Messages.list_room_messages(room_id, 50)
+    user_id = socket.assigns.current_scope.user.id
+    read_state = Messages.get_read_state(user_id, room_id)
 
-    # ✅ ВАЖНО: Сохраняем количество сообщений в assigns
+    messages = Messages.list_room_messages(room_id, 50, nil, user_id)
+    unread_count = Messages.count_unread_messages(user_id, room_id)
+
+    # 🔍 Отладка
+    IO.inspect("=== MOUNT DEBUG ===", label: "ROOM")
+    IO.inspect(unread_count, label: "unread_count")
+    IO.inspect(length(messages), label: "messages count")
+
     socket =
       socket
-      |> assign(room_id: room_id, topic: topic, username: username)
-      |> assign(:user_list, user_list)
+      |> assign(room_id: room_id || "")
+      |> assign(topic: topic)
+      |> assign(username: username || "anonymous")
+      |> assign(:user_list, user_list || [])
+      |> assign(user_id: user_id)
+      |> assign(read_state: read_state)
+      |> assign(unread_count: unread_count || 0)
       |> assign(:last_message_user, nil)
       |> assign(:last_message_time, nil)
-      # ← Новый аргумент
-      |> assign(:messages_count, length(messages))
-      |> stream(:messages, messages, reset: true)
+      |> assign(:messages_count, length(messages) || 0)
+      |> stream(:messages, messages || [], reset: true)
 
     {:ok, socket}
   end
@@ -59,29 +71,25 @@ defmodule ChatWeb.RoomLive do
 
   @impl true
   def handle_event("submit_message", %{"message" => content}, socket) do
-    if String.trim(content) == "" do
+    if String.trim(content || "") == "" do
       {:noreply, socket}
     else
-      now = DateTime.utc_now()
+      now = DateTime.truncate(DateTime.utc_now(), :second)
       show_header = should_show_header?(socket, socket.assigns.username, now)
+      user = socket.assigns.current_scope.user
 
-      user_id = socket.assigns.current_scope.user.id
-
-      case Messages.create_message(%{
+      case Messages.create_message(user, %{
              room_id: socket.assigns.room_id,
-             user_id: user_id,
              content: content
            }) do
-        # ← message не нужен
         {:ok, _message} ->
           ChatWeb.Endpoint.broadcast(socket.assigns.topic, "new_message", %{
-            # ← Или используйте message.id если нужно
             id: UUID.uuid4(),
-            # ← ИСПРАВЛЕНО: используем content
-            message: content,
-            username: socket.assigns.username,
+            message: content || "",
+            username: socket.assigns.username || "anonymous",
             timestamp: DateTime.to_iso8601(now),
-            show_header: show_header
+            show_header: show_header,
+            is_read: true
           })
 
           {:noreply,
@@ -98,52 +106,59 @@ defmodule ChatWeb.RoomLive do
   end
 
   @impl true
-  def handle_info(
-        %Phoenix.Socket.Broadcast{
-          event: "new_message",
-          payload: %{
-            id: id,
-            message: body,
-            username: username,
-            timestamp: timestamp,
-            show_header: show_header
-          }
-        },
+  def handle_event(
+        "mark_as_read",
+        %{"message_id" => message_id, "timestamp" => _timestamp},
         socket
       ) do
-    datetime =
-      case DateTime.from_iso8601(timestamp) do
-        {:ok, dt, _offset} -> dt
-        {:error, _} -> DateTime.utc_now()
-      end
+    if socket.assigns[:user_id] do
+      Task.start(fn ->
+        Process.sleep(500)
+        Messages.update_read_state(socket.assigns.user_id, socket.assigns.room_id, message_id)
+      end)
+    end
+
+    {:noreply, assign(socket, :unread_count, 0)}
+  end
+
+  @impl true
+  def handle_event("scroll_to_bottom", _params, socket) do
+    {:noreply, push_patch(socket, to: socket.assigns.live_action)}
+  end
+
+  @impl true
+  def handle_info(
+        %Phoenix.Socket.Broadcast{event: "new_message", payload: %{username: username}} =
+          broadcast,
+        socket
+      )
+      when username != socket.assigns.username do
+    new_count = (socket.assigns.unread_count || 0) + 1
 
     {:noreply,
-     socket
-     |> stream_insert(:messages, %{
-       id: id,
-       message: body,
-       username: username,
-       timestamp: timestamp,
-       show_header: show_header
-     })
-     |> assign(:last_message_user, username)
-     |> assign(:last_message_time, datetime)}
+     socket |> assign(:unread_count, new_count) |> stream_insert(:messages, broadcast.payload)}
+  end
+
+  @impl true
+  def handle_info(%Phoenix.Socket.Broadcast{event: "new_message"} = broadcast, socket) do
+    {:noreply, socket |> assign(:unread_count, 0) |> stream_insert(:messages, broadcast.payload)}
   end
 
   @impl true
   def handle_info(%{event: "presence_diff", payload: payload}, socket) do
+    now = DateTime.truncate(DateTime.utc_now(), :second)
+
     payload.joins
     |> Map.keys()
     |> Enum.each(fn username ->
       if username != socket.assigns.username do
-        now = DateTime.utc_now()
-
         ChatWeb.Endpoint.broadcast(socket.assigns.topic, "new_message", %{
           id: UUID.uuid4(),
           message: "#{username} joined the chat",
           username: "system",
           timestamp: DateTime.to_iso8601(now),
-          show_header: true
+          show_header: true,
+          is_read: true
         })
       end
     end)
@@ -151,14 +166,13 @@ defmodule ChatWeb.RoomLive do
     payload.leaves
     |> Map.keys()
     |> Enum.each(fn username ->
-      now = DateTime.utc_now()
-
       ChatWeb.Endpoint.broadcast(socket.assigns.topic, "new_message", %{
         id: UUID.uuid4(),
         message: "#{username} left the chat",
         username: "system",
         timestamp: DateTime.to_iso8601(now),
-        show_header: true
+        show_header: true,
+        is_read: true
       })
     end)
 
@@ -185,18 +199,10 @@ defmodule ChatWeb.RoomLive do
     |> Enum.map(fn username -> %{username: username} end)
   end
 
-  # ✅ ВОЗВРАЩАЕМ ФУНКЦИЮ format_time/1 для шаблона
   defp format_time(timestamp) do
-    case DateTime.from_iso8601(timestamp) do
+    case DateTime.from_iso8601(timestamp || "") do
       {:ok, utc_datetime, _offset} ->
-        # Конвертация в нужный часовой пояс
-        # Вариант А: по имени (требуется Timex)
-        # {:ok, local} = Timex.Timezone.convert(utc_datetime, "Europe/Moscow")
-
-        # Вариант Б: по смещению (без зависимостей)
-        # Например, +3 часа для Москвы
         local = DateTime.add(utc_datetime, 3 * 3600, :second)
-
         Calendar.strftime(local, "%H:%M:%S")
 
       {:error, _} ->

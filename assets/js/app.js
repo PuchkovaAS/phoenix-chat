@@ -29,48 +29,68 @@ const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute
 
 const myHooks = {
     // ✅ Хук автоскролла
+    // assets/js/app.js
     AutoScroll: {
         mounted() {
-            // Скроллим при первой загрузке
-            this.scrollToBottom();
+            // ✅ Получаем количество непрочитанных
+            const unreadCount = parseInt(this.el.dataset.unreadCount || '0', 10);
 
-            // Создаём наблюдатель за изменениями в контейнере
+            console.log(`[AutoScroll] Mounted with ${unreadCount} unread messages`);
+
+            // ✅ Даём DOM время отрисоваться перед скроллом
+            setTimeout(() => {
+                if (unreadCount > 0) {
+                    // Ищем первое непрочитанное сообщение
+                    const firstUnread = this.el.querySelector('[data-is-read="false"]');
+
+                    if (firstUnread) {
+                        console.log('[AutoScroll] Found unread message, scrolling to it');
+                        firstUnread.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+                        // Подсветка на 3 секунды
+                        firstUnread.classList.add('ring-2', 'ring-yellow-400', 'transition-all');
+                        setTimeout(() => {
+                            firstUnread.classList.remove('ring-2', 'ring-yellow-400');
+                        }, 3000);
+                    } else {
+                        console.log('[AutoScroll] No unread found, scrolling to bottom');
+                        this.scrollToBottom();
+                    }
+                } else {
+                    console.log('[AutoScroll] All read, scrolling to bottom');
+                    this.scrollToBottom();
+                }
+            }, 100); // ✅ Задержка 100мс для рендера
+
+            // Наблюдатель для новых сообщений
             this.observer = new MutationObserver(() => {
-                // Скроллим только если пользователь внизу (чтобы не мешать чтению)
-                if (this.isAtBottom()) {
+                const currentUnread = parseInt(this.el.dataset.unreadCount || '0', 10);
+                // Скроллим только если пользователь внизу и нет непрочитанных
+                if (this.isAtBottom() && currentUnread === 0) {
                     this.scrollToBottom();
                 }
             });
 
-            // Наблюдаем за добавлением/удалением детей
-            this.observer.observe(this.el, {
-                childList: true,
-                subtree: false, // false — быстрее, достаточно для стримов
-            });
+            this.observer.observe(this.el, { childList: true, subtree: false });
         },
 
         updated() {
-            // Для обычных обновлений (не через stream)
-            if (this.isAtBottom()) {
+            const unreadCount = parseInt(this.el.dataset.unreadCount || '0', 10);
+            if (this.isAtBottom() && unreadCount === 0) {
                 this.scrollToBottom();
             }
         },
 
         destroyed() {
-            // Очищаем наблюдатель при удалении хука
-            if (this.observer) {
-                this.observer.disconnect();
-            }
+            if (this.observer) this.observer.disconnect();
         },
 
-        // Проверяет, находится ли пользователь в нижней части чата (с запасом 100px)
         isAtBottom() {
             const threshold = 100;
             return this.el.scrollHeight - this.el.scrollTop - this.el.clientHeight < threshold;
         },
 
         scrollToBottom() {
-            // Двойной requestAnimationFrame для гарантии, что контент отрендерился
             requestAnimationFrame(() => {
                 requestAnimationFrame(() => {
                     this.el.scrollTo({
@@ -113,6 +133,57 @@ const myHooks = {
                 // second: '2-digit',  // раскомментируйте, если нужны секунды
                 hour12: false, // 24-часовой формат
             });
+        },
+    },
+    // ✅ Хук для автоматической отметки сообщения как "прочитанное"
+    MarkRead: {
+        mounted() {
+            // Не обрабатываем свои сообщения и системные
+            if (this.el.dataset.username === this.el.dataset.currentUsername || this.el.dataset.username === 'system') {
+                return;
+            }
+
+            this.marked = false;
+
+            this.observer = new IntersectionObserver(
+                (entries) => {
+                    entries.forEach((entry) => {
+                        if (entry.isIntersecting && !this.marked) {
+                            this.marked = true;
+
+                            // Отправляем событие на сервер
+                            this.pushEvent('mark_as_read', {
+                                message_id: this.el.dataset.messageId,
+                                timestamp: this.el.dataset.timestamp,
+                            });
+
+                            // Визуально убираем индикатор "новое"
+                            const badge = this.el.querySelector('.animate-pulse');
+                            if (badge) badge.classList.remove('animate-pulse', 'bg-blue-500');
+
+                            // Убираем подсветку контейнера
+                            this.el.classList.remove('bg-blue-500/10', 'rounded-lg', 'p-1', '-m-1');
+
+                            // Добавляем галочку "прочитано" (для чужих сообщений)
+                            const timeEl = this.el.querySelector('.local-time');
+                            if (timeEl && !timeEl.parentElement.querySelector('.text-emerald-400')) {
+                                const check = document.createElement('span');
+                                check.className = 'text-emerald-400 ml-1';
+                                check.textContent = '✓';
+                                check.title = 'Прочитано';
+                                timeEl.parentElement.appendChild(check);
+                            }
+                        }
+                    });
+                },
+                { threshold: 0.6 }, // 60% сообщения должно быть видно
+            );
+
+            this.observer.observe(this.el);
+        },
+
+        destroyed() {
+            if (this.observer) this.observer.disconnect();
         },
     },
 };
