@@ -1,0 +1,9 @@
+_build
+deps
+*.log
+.git
+.gitignore
+README.md
+.dockerignore
+Dockerfile
+docker-entrypoint.sh
