@@ -20,50 +20,50 @@ services:
             timeout: 5s
             retries: 5
 
-    app:
-        image: puchkovaas/chat_phx:1.0.0
-        container_name: phoenix_app
-        restart: always
-        # 🔥 Уберите блок 'build:', если используете готовый образ из Docker Hub
-        # build:
-        #   context: .
-        #   dockerfile: Dockerfile
-        ports:
-            - '4000:4000'
-        environment:
-            # --- База данных ---
-            DATABASE_URL: ecto://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
-
-            # --- Секреты ---
-            SECRET_KEY_BASE: ${SECRET_KEY_BASE}
-            CHAT_ENCRYPTION_KEY: ${CHAT_ENCRYPTION_KEY}
-
-            # --- 🔥 СЕТЬ И БЕЗОПАСНОСТЬ ---
-            PHX_SERVER: true
-            MIX_ENV: prod
-            PORT: 4000
-
-            # Хост вашего приложения (домен или IP)
-            APP_HOST: ${APP_HOST:-localhost}
-
-            # Схема: http для локальной разработки, https для продакшена за прокси
-            APP_SCHEME: ${APP_SCHEME:-http}
-            APP_URL_PORT: ${APP_URL_PORT:-4000}
-
-            # 🔥 Разрешённые источники для WebSocket (через запятую)
-            # Пример: "https://chat.example.com,https://www.chat.example.com,http://localhost:4000"
-            ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:4000,http://127.0.0.1:4000}
-
-            # Включить HSTS только в продакшене
-            FORCE_SSL: ${FORCE_SSL:-false}
-
-        depends_on:
-            db:
-                condition: service_healthy
-        networks:
-            - app-network
-        command: >
-            sh -c "/app/docker-entrypoint.sh"
+    # app:
+    #     image: puchkovaas/chat_phx:1.0.0
+    #     container_name: phoenix_app
+    #     restart: always
+    #     # 🔥 Уберите блок 'build:', если используете готовый образ из Docker Hub
+    #     # build:
+    #     #   context: .
+    #     #   dockerfile: Dockerfile
+    #     ports:
+    #         - '4000:4000'
+    #     environment:
+    #         # --- База данных ---
+    #         DATABASE_URL: ecto://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    #
+    #         # --- Секреты ---
+    #         SECRET_KEY_BASE: ${SECRET_KEY_BASE}
+    #         CHAT_ENCRYPTION_KEY: ${CHAT_ENCRYPTION_KEY}
+    #
+    #         # --- 🔥 СЕТЬ И БЕЗОПАСНОСТЬ ---
+    #         PHX_SERVER: true
+    #         MIX_ENV: prod
+    #         PORT: 4000
+    #
+    #         # Хост вашего приложения (домен или IP)
+    #         APP_HOST: ${APP_HOST:-localhost}
+    #
+    #         # Схема: http для локальной разработки, https для продакшена за прокси
+    #         APP_SCHEME: ${APP_SCHEME:-http}
+    #         APP_URL_PORT: ${APP_URL_PORT:-4000}
+    #
+    #         # 🔥 Разрешённые источники для WebSocket (через запятую)
+    #         # Пример: "https://chat.example.com,https://www.chat.example.com,http://localhost:4000"
+    #         ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:4000,http://127.0.0.1:4000}
+    #
+    #         # Включить HSTS только в продакшене
+    #         FORCE_SSL: ${FORCE_SSL:-false}
+    #
+    #     depends_on:
+    #         db:
+    #             condition: service_healthy
+    #     networks:
+    #         - app-network
+    #     command: >
+    #         sh -c "/app/docker-entrypoint.sh"
 
 volumes:
     postgres_data:

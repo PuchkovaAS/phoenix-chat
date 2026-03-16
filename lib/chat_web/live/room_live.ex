@@ -1,6 +1,6 @@
 defmodule ChatWeb.RoomLive do
   @moduledoc """
-  LiveView для комнаты чата с поддержкой зашифрованных сообщений.
+  LiveView для комнаты чата — без отслеживания прочитанных.
   """
 
   use ChatWeb, :live_view
@@ -19,21 +19,17 @@ defmodule ChatWeb.RoomLive do
     username =
       case socket.assigns[:current_scope] do
         %{user: %{nickname: nickname}} when not is_nil(nickname) and nickname != "" ->
-          Logger.info("Using nickname: #{nickname}")
           nickname
 
-        _other ->
-          Logger.warning("Fallback to anonymous (no nickname)")
+        _ ->
           "anonymous"
       end
 
-    # ✅ Находим комнату
     room = Rooms.get_room_by_name(room_id) || Rooms.get_room!(room_id)
     room_uuid = room.id
 
-    # 🔐 ПРОВЕРКА ДОСТУПА ДЛЯ ПРИВАТНЫХ КОМНАТ
+    # 🔐 Проверка доступа для приватных комнат
     if room.is_private && room.creator_id != socket.assigns.current_scope.user.id do
-      # ✅ Просто редирект с параметром — без sign_path
       {:ok,
        socket
        |> put_flash(:error, "This room is private. Please enter the password.")
@@ -46,13 +42,7 @@ defmodule ChatWeb.RoomLive do
     end
 
     user_list = list_users(topic)
-    user_id = socket.assigns.current_scope.user.id
-
-    read_state = Messages.get_read_state(user_id, room_uuid)
-    cursor = if read_state, do: read_state.last_seen_at, else: nil
-
-    messages = Messages.list_room_messages(room_uuid, 50, cursor, user_id)
-    unread_count = Messages.count_unread_messages(user_id, room_uuid)
+    messages = Messages.list_room_messages_simple(room_uuid, 50)
 
     socket =
       socket
@@ -61,12 +51,8 @@ defmodule ChatWeb.RoomLive do
       |> assign(topic: topic)
       |> assign(username: username)
       |> assign(:user_list, user_list)
-      |> assign(user_id: user_id)
-      |> assign(read_state: read_state)
-      |> assign(unread_count: unread_count)
       |> assign(:last_message_user, nil)
       |> assign(:last_message_time, nil)
-      |> assign(:messages_count, length(messages))
       |> assign(:room, room)
       |> stream(:messages, messages, reset: true)
 
@@ -101,8 +87,7 @@ defmodule ChatWeb.RoomLive do
             message: content,
             username: socket.assigns.username,
             timestamp: DateTime.to_iso8601(now),
-            show_header: show_header,
-            is_read: true
+            show_header: show_header
           })
 
           {:noreply,
@@ -119,42 +104,13 @@ defmodule ChatWeb.RoomLive do
   end
 
   @impl true
-  def handle_event(
-        "mark_as_read",
-        %{"message_id" => message_id, "timestamp" => _timestamp},
-        socket
-      ) do
-    if socket.assigns[:user_id] do
-      Task.start(fn ->
-        Process.sleep(500)
-        Messages.update_read_state(socket.assigns.user_id, socket.assigns.room_uuid, message_id)
-      end)
-    end
-
-    {:noreply, assign(socket, :unread_count, 0)}
-  end
-
-  @impl true
   def handle_event("scroll_to_bottom", _params, socket) do
     {:noreply, push_patch(socket, to: socket.assigns.live_action)}
   end
 
   @impl true
-  def handle_info(
-        %Phoenix.Socket.Broadcast{event: "new_message", payload: %{username: username}} =
-          broadcast,
-        socket
-      )
-      when username != socket.assigns.username do
-    new_count = (socket.assigns.unread_count || 0) + 1
-
-    {:noreply,
-     socket |> assign(:unread_count, new_count) |> stream_insert(:messages, broadcast.payload)}
-  end
-
-  @impl true
   def handle_info(%Phoenix.Socket.Broadcast{event: "new_message"} = broadcast, socket) do
-    {:noreply, socket |> assign(:unread_count, 0) |> stream_insert(:messages, broadcast.payload)}
+    {:noreply, socket |> stream_insert(:messages, broadcast.payload)}
   end
 
   @impl true
@@ -170,8 +126,7 @@ defmodule ChatWeb.RoomLive do
           message: "#{username} joined the chat",
           username: "system",
           timestamp: DateTime.to_iso8601(now),
-          show_header: true,
-          is_read: true
+          show_header: true
         })
       end
     end)
@@ -184,8 +139,7 @@ defmodule ChatWeb.RoomLive do
         message: "#{username} left the chat",
         username: "system",
         timestamp: DateTime.to_iso8601(now),
-        show_header: true,
-        is_read: true
+        show_header: true
       })
     end)
 

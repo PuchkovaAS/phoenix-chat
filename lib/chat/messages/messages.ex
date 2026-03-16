@@ -100,7 +100,6 @@ defmodule Chat.Messages do
           user_id: user_id,
           room_id: room_id,
           last_read_message_id: last_message_id,
-          unread_count: 0,
           last_seen_at: now
         }
         |> UserRoomReadState.changeset(%{})
@@ -110,7 +109,6 @@ defmodule Chat.Messages do
         read_state
         |> UserRoomReadState.changeset(%{
           last_read_message_id: last_message_id,
-          unread_count: 0,
           last_seen_at: now
         })
         |> Repo.update()
@@ -195,5 +193,48 @@ defmodule Chat.Messages do
       user && user.nickname && user.nickname != "" -> user.nickname
       true -> "anonymous"
     end
+  end
+
+  def list_room_messages_simple(room_id, limit \\ 50) do
+    from(m in Message,
+      where: m.room_id == ^room_id and is_nil(m.deleted_at),
+      order_by: [desc: m.inserted_at],
+      limit: ^limit,
+      preload: [:user]
+    )
+    |> Repo.all()
+    |> Enum.map(&Message.decrypt_content/1)
+    |> Enum.reverse()
+    |> enumerate_with_headers_simple()
+    |> Enum.map(&message_to_map_simple/1)
+  end
+
+  defp enumerate_with_headers_simple(messages) do
+    Enum.reduce(messages, {[], nil, nil}, fn message, {acc, last_user, last_time} ->
+      current_user = get_username(message)
+      current_time = message.inserted_at
+
+      show_header =
+        cond do
+          is_nil(last_user) -> true
+          last_user != current_user -> true
+          !is_nil(last_time) && DateTime.diff(current_time, last_time, :second) > 300 -> true
+          true -> false
+        end
+
+      {[{message, show_header} | acc], current_user, current_time}
+    end)
+    |> elem(0)
+    |> Enum.reverse()
+  end
+
+  defp message_to_map_simple({%Message{} = message, show_header}) do
+    %{
+      id: to_string(message.id || ""),
+      message: message.content || "",
+      username: get_username(message) || "anonymous",
+      timestamp: DateTime.to_iso8601(message.inserted_at || DateTime.utc_now()),
+      show_header: show_header || false
+    }
   end
 end

@@ -58,24 +58,55 @@ defmodule Chat.Crypto.MessageEncryptor do
       iex> decrypt(encrypted)
       {:ok, "Hello"}
   """
+
   def decrypt(%{ciphertext: ct, iv: iv, tag: tag}) do
     key = get_encryption_key()
 
+    # 🔍 Отладка
+    IO.inspect(
+      %{
+        key_size: byte_size(key),
+        ciphertext_size: byte_size(ct),
+        iv_size: byte_size(iv),
+        tag_size: byte_size(tag)
+      },
+      label: "DECRYPT DEBUG"
+    )
+
     case :crypto.crypto_one_time_aead(:aes_256_gcm, key, iv, ct, "", tag, false) do
-      plaintext when is_binary(plaintext) -> {:ok, plaintext}
-      _ -> {:error, :decryption_failed}
+      plaintext when is_binary(plaintext) ->
+        {:ok, plaintext}
+
+      error ->
+        # 🔍 Логируем ошибку
+        IO.inspect(error, label: "DECRYPT ERROR")
+        {:error, :decryption_failed}
     end
   end
 
-  @doc """
-  Получает ключ шифрования из конфигурации.
-  """
   def get_encryption_key do
-    case Application.get_env(:chat, Chat.Crypto)[:encryption_key] do
-      nil -> raise "Encryption key not configured!"
-      key when byte_size(key) == @aes_key_size -> key
-      _ -> raise "Invalid encryption key size (expected #{@aes_key_size} bytes)"
-    end
+    key =
+      case Application.get_env(:chat, Chat.Crypto)[:encryption_key] do
+        nil ->
+          raise "Encryption key not configured!"
+
+        key when byte_size(key) == @aes_key_size ->
+          key
+
+        key ->
+          # 🔍 Логируем размер ключа
+          IO.inspect(
+            %{
+              configured_size: byte_size(key),
+              expected_size: @aes_key_size
+            },
+            label: "KEY SIZE MISMATCH"
+          )
+
+          raise "Invalid encryption key size (expected #{@aes_key_size} bytes, got #{byte_size(key)})"
+      end
+
+    key
   end
 
   @doc """
