@@ -67,6 +67,12 @@ if config_env() == :prod do
 
   # force_ssl: [hsts: System.get_env("FORCE_SSL") in ~w(true 1)]
 
+  # --- 🔥 Mailer (Email) - Logger адаптер для продакшена ---
+  # Письма будут логироваться в консоль вместо отправки
+  config :chat, Chat.Mailer,
+    adapter: Swoosh.Adapters.Logger,
+    level: :info
+
   # --- Ключ шифрования ---
   config :chat, Chat.Crypto,
     encryption_key:
@@ -81,4 +87,9 @@ else
     encryption_key:
       System.get_env("CHAT_ENCRYPTION_KEY", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
       |> Base.decode64!()
+
+  # В dev режиме тоже используем Logger (или можно Local для просмотра писем)
+  config :chat, Chat.Mailer,
+    adapter: Swoosh.Adapters.Logger,
+    level: :info
 end
