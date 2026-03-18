@@ -24,4 +24,3 @@ defmodule Chat.Repo.Migrations.CreateRooms do
     create unique_index(:rooms, [:name])
   end
 end
-

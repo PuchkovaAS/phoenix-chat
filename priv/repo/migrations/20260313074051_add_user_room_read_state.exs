@@ -22,4 +22,3 @@ defmodule Chat.Repo.Migrations.AddUserRoomReadState do
     create index(:user_room_read_states, [:last_read_message_id])
   end
 end
-
